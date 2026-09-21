@@ -170,6 +170,8 @@ export const api = {
   login: (data: any) => fetchJson<{ user: User; token: string }>('/auth/login', { method: 'POST', body: JSON.stringify(data) }),
   getMe: () => fetchJson<{ user: User; customer?: CustomerProfile }>('/auth/me'),
   updateProfile: (data: any) => fetchJson<{ user: User; customer?: CustomerProfile }>('/auth/profile', { method: 'PUT', body: JSON.stringify(data) }),
+  changePassword: (data: { currentPassword?: string; newPassword: string }) =>
+    fetchJson<{ success: boolean; message: string }>('/auth/change-password', { method: 'PUT', body: JSON.stringify(data) }),
 
   // Wishlist
   getWishlist: () => fetchJson<Product[]>('/wishlist'),

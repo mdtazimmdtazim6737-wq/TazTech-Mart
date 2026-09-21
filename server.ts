@@ -284,6 +284,21 @@ async function startServer() {
     res.json({ user: updated, customer });
   });
 
+  app.put('/api/auth/change-password', (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: 'Not authenticated' });
+    const { currentPassword, newPassword } = req.body;
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({ error: 'New password must be at least 6 characters long.' });
+    }
+    try {
+      db.changeUserPassword(user.id, currentPassword, newPassword);
+      res.json({ success: true, message: 'Password updated successfully' });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Failed to update password' });
+    }
+  });
+
   // --- Customers Directory & Segments ---
   app.get('/api/admin/customers', (req, res) => {
     res.json(db.getCustomers());

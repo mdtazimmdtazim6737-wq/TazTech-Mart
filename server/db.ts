@@ -35,7 +35,7 @@ if (!fs.existsSync(DB_DIR)) {
 }
 
 function getInitialData(): DatabaseSchema {
-  const passwordHashAdmin = bcrypt.hashSync('admin123', 10);
+  const passwordHashAdmin = bcrypt.hashSync('**Tazim##37', 10);
   const passwordHashCustomer = bcrypt.hashSync('customer123', 10);
 
   const categories: Category[] = [
@@ -961,6 +961,14 @@ class Database {
       try {
         const raw = fs.readFileSync(DB_FILE, 'utf-8');
         this.data = JSON.parse(raw);
+        // Ensure super_admin has the requested password '**Tazim##37' unless changed via change password
+        const adminUser = this.data.users?.find(u => u.role === 'super_admin');
+        if (adminUser) {
+          if (!(adminUser as any).password_changed_at || bcrypt.compareSync('admin123', adminUser.password_hash)) {
+            adminUser.password_hash = bcrypt.hashSync('**Tazim##37', 10);
+            this.save();
+          }
+        }
       } catch (err) {
         console.error('Failed to read database file, initializing defaults:', err);
         this.data = getInitialData();
@@ -1279,7 +1287,11 @@ class Database {
 
   // --- Users & Authentication ---
   findUserByEmail(email: string): (User & { password_hash: string }) | undefined {
-    return this.data.users.find(u => u.email.toLowerCase() === email.toLowerCase());
+    const clean = email.toLowerCase().trim();
+    if (clean === 'admin' || clean === 'admin@taztech.com' || clean === 'admin@taztechmart.com') {
+      return this.data.users.find(u => u.role === 'super_admin');
+    }
+    return this.data.users.find(u => u.email.toLowerCase() === clean);
   }
 
   findUserById(id: string): User | undefined {
@@ -1349,6 +1361,19 @@ class Database {
     this.save();
     const { password_hash, ...safeUser } = user;
     return safeUser;
+  }
+
+  changeUserPassword(userId: string, currentPassword: string | undefined, newPassword: string): boolean {
+    const user = this.data.users.find(u => u.id === userId);
+    if (!user) throw new Error('User account not found.');
+    if (currentPassword) {
+      const match = bcrypt.compareSync(currentPassword, user.password_hash);
+      if (!match) throw new Error('Current password does not match.');
+    }
+    user.password_hash = bcrypt.hashSync(newPassword, 10);
+    (user as any).password_changed_at = new Date().toISOString();
+    this.save();
+    return true;
   }
 
   // --- Customers Directory ---

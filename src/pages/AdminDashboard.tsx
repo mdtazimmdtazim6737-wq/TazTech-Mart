@@ -3,8 +3,8 @@ import {
   LayoutDashboard, ShoppingBag, FolderTree, PackageCheck, Users, 
   Tag, Star, Megaphone, BarChart3, Sliders, Image as ImageIcon,
   Settings, FileText, ArrowLeft, Search, Plus, Trash2, Edit3, 
-  Check, X, RefreshCw, Truck, Eye, Printer, AlertTriangle, ShieldCheck,
-  DollarSign, TrendingUp, Save, Copy
+  Check, X, RefreshCw, Truck, Eye, EyeOff, Printer, AlertTriangle, ShieldCheck,
+  DollarSign, TrendingUp, Save, Copy, Lock, LogOut, Key
 } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { api } from '../services/api';
@@ -17,7 +17,7 @@ import {
 export const AdminDashboard: React.FC = () => {
   const { 
     user, settings: globalSettings, refreshSettings, refreshCategories,
-    setActivePage, categories: storeCategories 
+    setActivePage, categories: storeCategories, login, logout 
   } = useStore();
 
   const [activeAdminTab, setActiveAdminTab] = useState<
@@ -25,6 +25,83 @@ export const AdminDashboard: React.FC = () => {
     'coupons' | 'reviews' | 'marketing' | 'analytics' | 'cms' | 
     'banners' | 'settings' | 'pages'
   >('overview');
+
+  const isAdmin = Boolean(
+    user && ['super_admin', 'admin', 'manager', 'content_manager', 'order_manager'].includes(user.role)
+  );
+
+  // Admin login form state
+  const [adminEmail, setAdminEmail] = useState('admin@taztech.com');
+  const [adminPassword, setAdminPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+
+  // Admin password change modal / form state
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [currentPasswordInput, setCurrentPasswordInput] = useState('');
+  const [newPasswordInput, setNewPasswordInput] = useState('');
+  const [confirmPasswordInput, setConfirmPasswordInput] = useState('');
+  const [showCurrentPass, setShowCurrentPass] = useState(false);
+  const [showNewPass, setShowNewPass] = useState(false);
+  const [passwordChangeStatus, setPasswordChangeStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+
+  const handleUpdatePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordChangeStatus(null);
+    if (!newPasswordInput || newPasswordInput.length < 6) {
+      setPasswordChangeStatus({ type: 'error', message: 'New password must be at least 6 characters long.' });
+      return;
+    }
+    if (newPasswordInput !== confirmPasswordInput) {
+      setPasswordChangeStatus({ type: 'error', message: 'New passwords do not match. Please re-enter.' });
+      return;
+    }
+    try {
+      setIsChangingPassword(true);
+      await api.changePassword({
+        currentPassword: currentPasswordInput,
+        newPassword: newPasswordInput
+      });
+      setPasswordChangeStatus({ type: 'success', message: 'Password updated successfully! Your new password is now active.' });
+      setCurrentPasswordInput('');
+      setNewPasswordInput('');
+      setConfirmPasswordInput('');
+      setActionFeedback('Admin password has been securely updated.');
+      setTimeout(() => setActionFeedback(null), 4000);
+    } catch (err: any) {
+      setPasswordChangeStatus({ type: 'error', message: err.message || 'Failed to update password. Please check your current password.' });
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
+
+  const handleAdminLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError(null);
+    if (!adminEmail.trim() || !adminPassword) {
+      setLoginError('Please enter both admin email and password.');
+      return;
+    }
+    try {
+      setIsLoggingIn(true);
+      const loggedUser = await login(adminEmail.trim(), adminPassword);
+      if (!['super_admin', 'admin', 'manager', 'content_manager', 'order_manager'].includes(loggedUser.role)) {
+        setLoginError('Access denied: This user account does not have administrative privileges.');
+        setIsLoggingIn(false);
+        return;
+      }
+      setActionFeedback(`Authentication successful. Welcome, ${loggedUser.name}!`);
+      setTimeout(() => setActionFeedback(null), 3500);
+    } catch (err: any) {
+      setLoginError(err.message || 'Invalid email or password. Please try again.');
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  const [actionFeedback, setActionFeedback] = useState<string | null>(null);
 
   // Overview data
   const [analytics, setAnalytics] = useState<AnalyticsSummary | null>(null);
@@ -136,8 +213,10 @@ export const AdminDashboard: React.FC = () => {
   };
 
   useEffect(() => {
-    loadAdminData();
-  }, [globalSettings]);
+    if (isAdmin) {
+      loadAdminData();
+    }
+  }, [isAdmin, globalSettings]);
 
   // Handle Settings Save
   const handleSaveSettings = async (e: React.FormEvent) => {
@@ -199,13 +278,16 @@ export const AdminDashboard: React.FC = () => {
   };
 
   // Handle Product Delete
-  const handleDeleteProduct = async (id: string) => {
-    if (!window.confirm('Are you sure you want to delete this product?')) return;
+  const handleDeleteProduct = async (id: string, name?: string) => {
     try {
       await api.deleteProduct(id);
       setProducts(prev => prev.filter(p => p.id !== id));
+      setActionFeedback(`Deleted product: "${name || 'Item'}" successfully.`);
+      setTimeout(() => setActionFeedback(null), 3500);
     } catch (err) {
       console.error(err);
+      setActionFeedback('Failed to delete product. Please try again.');
+      setTimeout(() => setActionFeedback(null), 3500);
     }
   };
 
@@ -214,8 +296,12 @@ export const AdminDashboard: React.FC = () => {
     try {
       const dup = await api.duplicateProduct(id);
       setProducts(prev => [dup, ...prev]);
+      setActionFeedback(`Duplicated product as: "${dup.name}"`);
+      setTimeout(() => setActionFeedback(null), 3500);
     } catch (err) {
       console.error(err);
+      setActionFeedback('Failed to duplicate product.');
+      setTimeout(() => setActionFeedback(null), 3500);
     }
   };
 
@@ -227,15 +313,33 @@ export const AdminDashboard: React.FC = () => {
       if (editingCategory.id) {
         const updated = await api.updateCategory(editingCategory.id, editingCategory);
         setCategories(prev => prev.map(c => c.id === updated.id ? updated : c));
+        setActionFeedback(`Updated category: "${updated.name}"`);
       } else {
         const created = await api.createCategory(editingCategory);
         setCategories(prev => [...prev, created]);
+        setActionFeedback(`Created category: "${created.name}"`);
       }
       refreshCategories();
       setShowCategoryModal(false);
       setEditingCategory(null);
+      setTimeout(() => setActionFeedback(null), 3500);
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  // Handle Category Delete
+  const handleDeleteCategory = async (id: string, name?: string) => {
+    try {
+      await api.deleteCategory(id);
+      setCategories(prev => prev.filter(c => c.id !== id));
+      refreshCategories();
+      setActionFeedback(`Deleted category: "${name || 'Category'}"`);
+      setTimeout(() => setActionFeedback(null), 3500);
+    } catch (err) {
+      console.error(err);
+      setActionFeedback('Failed to delete category.');
+      setTimeout(() => setActionFeedback(null), 3500);
     }
   };
 
@@ -247,14 +351,31 @@ export const AdminDashboard: React.FC = () => {
       if (editingCoupon.id) {
         const updated = await api.updateCoupon(editingCoupon.id, editingCoupon);
         setCoupons(prev => prev.map(c => c.id === updated.id ? updated : c));
+        setActionFeedback(`Updated coupon: "${updated.code}"`);
       } else {
         const created = await api.createCoupon(editingCoupon);
         setCoupons(prev => [created, ...prev]);
+        setActionFeedback(`Created coupon: "${created.code}"`);
       }
       setShowCouponModal(false);
       setEditingCoupon(null);
+      setTimeout(() => setActionFeedback(null), 3500);
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  // Handle Coupon Delete
+  const handleDeleteCoupon = async (id: string, code?: string) => {
+    try {
+      await api.deleteCoupon(id);
+      setCoupons(prev => prev.filter(c => c.id !== id));
+      setActionFeedback(`Deleted coupon: "${code || 'Coupon'}"`);
+      setTimeout(() => setActionFeedback(null), 3500);
+    } catch (err) {
+      console.error(err);
+      setActionFeedback('Failed to delete coupon.');
+      setTimeout(() => setActionFeedback(null), 3500);
     }
   };
 
@@ -266,12 +387,41 @@ export const AdminDashboard: React.FC = () => {
       if (editingBanner.id) {
         const updated = await api.updateBanner(editingBanner.id, editingBanner);
         setBanners(prev => prev.map(b => b.id === updated.id ? updated : b));
+        setActionFeedback(`Updated banner: "${updated.title}"`);
       } else {
         const created = await api.createBanner(editingBanner);
         setBanners(prev => [...prev, created]);
+        setActionFeedback(`Created banner: "${created.title}"`);
       }
       setShowBannerModal(false);
       setEditingBanner(null);
+      setTimeout(() => setActionFeedback(null), 3500);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // Handle Banner Delete
+  const handleDeleteBanner = async (id: string, title?: string) => {
+    try {
+      await api.deleteBanner(id);
+      setBanners(prev => prev.filter(b => b.id !== id));
+      setActionFeedback(`Deleted hero banner: "${title || 'Banner'}"`);
+      setTimeout(() => setActionFeedback(null), 3500);
+    } catch (err) {
+      console.error(err);
+      setActionFeedback('Failed to delete banner.');
+      setTimeout(() => setActionFeedback(null), 3500);
+    }
+  };
+
+  // Handle Review Delete
+  const handleDeleteReview = async (id: string) => {
+    try {
+      await api.deleteReview(id);
+      setReviews(prev => prev.filter(r => r.id !== id));
+      setActionFeedback('Review removed from moderation queue.');
+      setTimeout(() => setActionFeedback(null), 3500);
     } catch (err) {
       console.error(err);
     }
@@ -312,6 +462,125 @@ export const AdminDashboard: React.FC = () => {
     }
   };
 
+  // RESTRICTED ACCESS GATE: If not logged in as Admin/Manager, show Password Login Screen
+  if (!isAdmin) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-between relative overflow-hidden">
+        {/* Ambient background glows */}
+        <div className="absolute -top-40 -right-40 w-96 h-96 bg-cyan-600/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
+
+        {/* Top Header */}
+        <header className="px-6 py-4 border-b border-slate-800/80 flex items-center justify-between relative z-10">
+          <button
+            onClick={() => setActivePage('home')}
+            className="flex items-center space-x-2 text-xs font-semibold text-slate-400 hover:text-white px-3 py-1.5 rounded-lg hover:bg-slate-900 transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>Return to Storefront</span>
+          </button>
+          <div className="flex items-center space-x-2">
+            <span className="font-black text-sm tracking-tight text-white">{globalSettings.website_name}</span>
+            <span className="bg-cyan-500/20 text-cyan-400 font-bold text-[10px] px-2 py-0.5 rounded border border-cyan-500/30 uppercase">
+              Admin Gateway
+            </span>
+          </div>
+        </header>
+
+        {/* Login Box */}
+        <main className="flex-1 flex items-center justify-center p-4 sm:p-6 relative z-10">
+          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
+            <div className="text-center space-y-2">
+              <div className="w-14 h-14 bg-gradient-to-tr from-cyan-600 to-blue-600 text-white rounded-2xl flex items-center justify-center mx-auto shadow-lg shadow-cyan-600/20">
+                <Lock className="w-7 h-7" />
+              </div>
+              <h1 className="text-2xl font-black tracking-tight text-white">Admin Control Login</h1>
+              <p className="text-xs text-slate-400">
+                Password protected management area. Please enter your administrator email and password to log in.
+              </p>
+            </div>
+
+            {/* Error Message */}
+            {loginError && (
+              <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl text-rose-400 text-xs flex items-start space-x-2">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{loginError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleAdminLogin} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                  Admin Email Address
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={adminEmail}
+                  onChange={(e) => setAdminEmail(e.target.value)}
+                  placeholder="admin@taztech.com"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-cyan-500 transition-colors"
+                />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-400">
+                    Admin Password
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="text-[11px] text-cyan-400 hover:text-cyan-300 font-semibold"
+                  >
+                    {showPassword ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    value={adminPassword}
+                    onChange={(e) => setAdminPassword(e.target.value)}
+                    placeholder="Enter admin password"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-cyan-500 transition-colors"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isLoggingIn}
+                className="w-full bg-cyan-600 hover:bg-cyan-500 disabled:opacity-60 text-white font-bold text-sm py-3 rounded-xl transition-colors flex items-center justify-center space-x-2 shadow-lg shadow-cyan-600/25"
+              >
+                {isLoggingIn ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Verifying Credentials...</span>
+                  </>
+                ) : (
+                  <>
+                    <ShieldCheck className="w-4 h-4" />
+                    <span>Log In to Admin Panel</span>
+                  </>
+                )}
+              </button>
+            </form>
+
+            <div className="pt-4 border-t border-slate-800/80 flex items-center justify-center space-x-2 text-[11px] text-slate-500">
+              <Lock className="w-3.5 h-3.5 text-slate-500" />
+              <span>Encrypted Session • Authorized Personnel Only</span>
+            </div>
+          </div>
+        </main>
+
+        <footer className="py-4 text-center text-[11px] text-slate-600 border-t border-slate-900 relative z-10">
+          TazTech Mart E-Commerce • Secured Administrative Subsystem
+        </footer>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col">
       
@@ -336,10 +605,13 @@ export const AdminDashboard: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-center space-x-4">
-          <span className="text-xs text-slate-400 hidden md:inline">
-            Logged in as <strong className="text-slate-200">{user?.name}</strong> ({user?.role})
-          </span>
+        <div className="flex items-center space-x-3 sm:space-x-4">
+          <div className="flex items-center space-x-1.5 text-xs text-slate-400 hidden md:flex">
+            <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
+            <span>
+              Logged in as <strong className="text-cyan-300">{user?.name}</strong> ({user?.role})
+            </span>
+          </div>
           <button
             onClick={loadAdminData}
             className="p-1.5 text-slate-400 hover:text-cyan-400 rounded-lg hover:bg-slate-800 transition-colors"
@@ -347,8 +619,46 @@ export const AdminDashboard: React.FC = () => {
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-cyan-400' : ''}`} />
           </button>
+          <button
+            onClick={() => {
+              setShowPasswordModal(true);
+              setPasswordChangeStatus(null);
+              setCurrentPasswordInput('');
+              setNewPasswordInput('');
+              setConfirmPasswordInput('');
+            }}
+            className="flex items-center space-x-1.5 bg-cyan-950/80 hover:bg-cyan-900 text-cyan-300 border border-cyan-700/60 hover:border-cyan-400 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors"
+            title="Change Admin Password"
+          >
+            <Key className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Change Password</span>
+          </button>
+          <button
+            onClick={() => {
+              logout();
+              setActionFeedback('Logged out of Admin Panel.');
+            }}
+            className="flex items-center space-x-1.5 bg-slate-800 hover:bg-rose-900/50 text-slate-300 hover:text-rose-300 px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-700 hover:border-rose-700/60 transition-colors"
+            title="Log Out of Admin Panel"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Log Out</span>
+          </button>
         </div>
       </header>
+
+      {/* Action Confirmation Banner */}
+      {actionFeedback && (
+        <div className="bg-emerald-600 text-white py-2 px-4 text-xs font-semibold flex items-center justify-between shadow-md sticky top-[49px] z-20 transition-all">
+          <div className="flex items-center space-x-2">
+            <Check className="w-4 h-4 text-emerald-200" />
+            <span>{actionFeedback}</span>
+          </div>
+          <button onClick={() => setActionFeedback(null)} className="text-emerald-200 hover:text-white p-1">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* Main Admin Workspace with Sidebar */}
       <div className="flex-1 flex flex-col md:flex-row">
@@ -781,7 +1091,7 @@ export const AdminDashboard: React.FC = () => {
                               <Edit3 className="w-3.5 h-3.5 inline" />
                             </button>
                             <button
-                              onClick={() => handleDeleteProduct(p.id)}
+                              onClick={() => handleDeleteProduct(p.id, p.name)}
                               className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg"
                               title="Delete Product"
                             >
@@ -832,15 +1142,25 @@ export const AdminDashboard: React.FC = () => {
                         <span className="text-[10px] text-slate-400 font-mono">/{c.slug} • {c.product_count || 0} items</span>
                       </div>
                     </div>
-                    <button
-                      onClick={() => {
-                        setEditingCategory(c);
-                        setShowCategoryModal(true);
-                      }}
-                      className="p-1.5 text-slate-400 hover:text-cyan-600 hover:bg-slate-100 rounded-lg"
-                    >
-                      <Edit3 className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center space-x-1">
+                      <button
+                        onClick={() => {
+                          setEditingCategory(c);
+                          setShowCategoryModal(true);
+                        }}
+                        className="p-1.5 text-slate-400 hover:text-cyan-600 hover:bg-slate-100 rounded-lg transition-colors"
+                        title="Edit Category"
+                      >
+                        <Edit3 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteCategory(c.id, c.name)}
+                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                        title="Delete Category"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1034,7 +1354,15 @@ export const AdminDashboard: React.FC = () => {
                       Minimum Order: ৳{c.min_order_amount.toLocaleString()}
                     </p>
 
-                    <div className="pt-3 border-t border-slate-100 flex justify-end">
+                    <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+                      <button
+                        onClick={() => handleDeleteCoupon(c.id, c.code)}
+                        className="text-xs text-rose-500 hover:text-rose-700 font-semibold flex items-center p-1 rounded hover:bg-rose-50 transition-colors"
+                        title="Delete Coupon"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 mr-1" />
+                        Delete
+                      </button>
                       <button
                         onClick={() => {
                           setEditingCoupon(c);
@@ -1107,6 +1435,13 @@ export const AdminDashboard: React.FC = () => {
                           {r.is_featured ? 'Unfeature' : 'Feature on Home'}
                         </button>
                       )}
+                      <button
+                        onClick={() => handleDeleteReview(r.id)}
+                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                        title="Delete Review"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -1290,8 +1625,13 @@ export const AdminDashboard: React.FC = () => {
                 </div>
                 <button
                   onClick={async () => {
-                    await api.updateHomepageSections(homepageSections);
-                    alert('Homepage layout saved!');
+                    try {
+                      await api.updateHomepageSections(homepageSections);
+                      setActionFeedback('Homepage layout & section ordering saved successfully!');
+                      setTimeout(() => setActionFeedback(null), 3500);
+                    } catch (err) {
+                      console.error(err);
+                    }
                   }}
                   className="bg-cyan-600 hover:bg-cyan-700 text-white font-bold text-xs px-4 py-2 rounded-xl inline-flex items-center space-x-1"
                 >
@@ -1367,15 +1707,24 @@ export const AdminDashboard: React.FC = () => {
                     </div>
                     <div className="p-3 flex items-center justify-between border-t border-slate-100">
                       <span className="text-xs text-slate-500 truncate max-w-xs">{b.link_url}</span>
-                      <button
-                        onClick={() => {
-                          setEditingBanner(b);
-                          setShowBannerModal(true);
-                        }}
-                        className="text-xs text-cyan-600 font-bold hover:underline"
-                      >
-                        Edit
-                      </button>
+                      <div className="flex items-center space-x-2">
+                        <button
+                          onClick={() => handleDeleteBanner(b.id, b.title)}
+                          className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 transition-colors"
+                          title="Delete Banner"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            setEditingBanner(b);
+                            setShowBannerModal(true);
+                          }}
+                          className="text-xs text-cyan-600 font-bold hover:underline"
+                        >
+                          Edit
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -1525,6 +1874,110 @@ export const AdminDashboard: React.FC = () => {
                   <span>Save All Settings</span>
                 </button>
               </form>
+
+              {/* Admin Security & Password Change */}
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4 text-xs">
+                <div className="flex items-center space-x-2 border-b border-slate-100 pb-3">
+                  <div className="p-2 bg-cyan-50 text-cyan-600 rounded-xl">
+                    <Key className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-slate-900 text-sm">Admin Access Security & Password</h3>
+                    <p className="text-slate-500 text-[11px]">
+                      Change your administrator account password. Only authorized administrators can update this access credential.
+                    </p>
+                  </div>
+                </div>
+
+                {passwordChangeStatus && (
+                  <div className={`p-3 rounded-xl text-xs flex items-start space-x-2 ${
+                    passwordChangeStatus.type === 'success' 
+                      ? 'bg-emerald-50 border border-emerald-200 text-emerald-800' 
+                      : 'bg-rose-50 border border-rose-200 text-rose-800'
+                  }`}>
+                    {passwordChangeStatus.type === 'success' ? (
+                      <Check className="w-4 h-4 shrink-0 mt-0.5 text-emerald-600" />
+                    ) : (
+                      <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
+                    )}
+                    <span>{passwordChangeStatus.message}</span>
+                  </div>
+                )}
+
+                <form onSubmit={handleUpdatePassword} className="space-y-4 max-w-xl">
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="font-bold text-slate-700">Current Password</label>
+                      <button
+                        type="button"
+                        onClick={() => setShowCurrentPass(!showCurrentPass)}
+                        className="text-[11px] text-cyan-600 font-semibold hover:underline"
+                      >
+                        {showCurrentPass ? 'Hide' : 'Show'}
+                      </button>
+                    </div>
+                    <input
+                      type={showCurrentPass ? 'text' : 'password'}
+                      value={currentPasswordInput}
+                      onChange={(e) => setCurrentPasswordInput(e.target.value)}
+                      placeholder="Enter your current admin password"
+                      className="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-slate-900"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="font-bold text-slate-700">New Password</label>
+                        <button
+                          type="button"
+                          onClick={() => setShowNewPass(!showNewPass)}
+                          className="text-[11px] text-cyan-600 font-semibold hover:underline"
+                        >
+                          {showNewPass ? 'Hide' : 'Show'}
+                        </button>
+                      </div>
+                      <input
+                        type={showNewPass ? 'text' : 'password'}
+                        required
+                        value={newPasswordInput}
+                        onChange={(e) => setNewPasswordInput(e.target.value)}
+                        placeholder="Minimum 6 characters"
+                        className="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-slate-900"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Confirm New Password</label>
+                      <input
+                        type={showNewPass ? 'text' : 'password'}
+                        required
+                        value={confirmPasswordInput}
+                        onChange={(e) => setConfirmPasswordInput(e.target.value)}
+                        placeholder="Re-enter new password"
+                        className="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-slate-900"
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={isChangingPassword}
+                    className="bg-slate-900 hover:bg-slate-800 disabled:opacity-60 text-white font-bold text-xs px-5 py-2.5 rounded-xl transition-colors inline-flex items-center space-x-1.5"
+                  >
+                    {isChangingPassword ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>Updating Password...</span>
+                      </>
+                    ) : (
+                      <>
+                        <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
+                        <span>Update Admin Password</span>
+                      </>
+                    )}
+                  </button>
+                </form>
+              </div>
             </div>
           )}
 
@@ -1989,6 +2442,134 @@ export const AdminDashboard: React.FC = () => {
               <button type="submit" className="bg-cyan-600 text-white font-bold px-5 py-2 rounded-xl">Save</button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* Change Admin Password Modal */}
+      {showPasswordModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4 text-xs">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center space-x-2">
+                <div className="p-2 bg-cyan-50 text-cyan-600 rounded-xl">
+                  <Key className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-sm">Change Admin Password</h3>
+                  <p className="text-[11px] text-slate-500">Update your credentials to maintain security</p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setShowPasswordModal(false);
+                  setPasswordChangeStatus(null);
+                }}
+                className="p-1 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {passwordChangeStatus && (
+              <div className={`p-3 rounded-xl text-xs flex items-start space-x-2 ${
+                passwordChangeStatus.type === 'success' 
+                  ? 'bg-emerald-50 border border-emerald-200 text-emerald-800' 
+                  : 'bg-rose-50 border border-rose-200 text-rose-800'
+              }`}>
+                {passwordChangeStatus.type === 'success' ? (
+                  <Check className="w-4 h-4 shrink-0 mt-0.5 text-emerald-600" />
+                ) : (
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
+                )}
+                <span>{passwordChangeStatus.message}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleUpdatePassword} className="space-y-3.5">
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="font-bold text-slate-700">Current Password</label>
+                  <button
+                    type="button"
+                    onClick={() => setShowCurrentPass(!showCurrentPass)}
+                    className="text-[11px] text-cyan-600 font-semibold hover:underline"
+                  >
+                    {showCurrentPass ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+                <input
+                  type={showCurrentPass ? 'text' : 'password'}
+                  value={currentPasswordInput}
+                  onChange={(e) => setCurrentPasswordInput(e.target.value)}
+                  placeholder="Enter current password"
+                  className="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-slate-900 focus:outline-none focus:border-cyan-500"
+                />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="font-bold text-slate-700">New Password</label>
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPass(!showNewPass)}
+                    className="text-[11px] text-cyan-600 font-semibold hover:underline"
+                  >
+                    {showNewPass ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+                <input
+                  type={showNewPass ? 'text' : 'password'}
+                  required
+                  value={newPasswordInput}
+                  onChange={(e) => setNewPasswordInput(e.target.value)}
+                  placeholder="Minimum 6 characters"
+                  className="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-slate-900 focus:outline-none focus:border-cyan-500"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Confirm New Password</label>
+                <input
+                  type={showNewPass ? 'text' : 'password'}
+                  required
+                  value={confirmPasswordInput}
+                  onChange={(e) => setConfirmPasswordInput(e.target.value)}
+                  placeholder="Re-enter new password"
+                  className="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-slate-900 focus:outline-none focus:border-cyan-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-end space-x-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowPasswordModal(false);
+                    setPasswordChangeStatus(null);
+                  }}
+                  className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 font-medium"
+                >
+                  Close
+                </button>
+                <button
+                  type="submit"
+                  disabled={isChangingPassword}
+                  className="bg-cyan-600 hover:bg-cyan-500 disabled:opacity-60 text-white font-bold px-4 py-2 rounded-xl transition-colors flex items-center space-x-1.5 shadow-md shadow-cyan-600/20"
+                >
+                  {isChangingPassword ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Updating...</span>
+                    </>
+                  ) : (
+                    <>
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      <span>Save New Password</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 

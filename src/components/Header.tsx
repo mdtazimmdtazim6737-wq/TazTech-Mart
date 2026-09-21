@@ -122,16 +122,15 @@ export const Header: React.FC = () => {
               Track Order
             </button>
 
-            {isAdminOrManager && (
-              <button 
-                id="topbar-admin-link"
-                onClick={() => setActivePage('admin')}
-                className="inline-flex items-center bg-cyan-600 hover:bg-cyan-700 text-white font-medium px-2.5 py-0.5 rounded-md shadow-xs transition-colors"
-              >
-                <LayoutDashboard className="w-3 h-3 mr-1" />
-                Admin Dashboard
-              </button>
-            )}
+            <button 
+              id="topbar-admin-link"
+              onClick={() => setActivePage('admin')}
+              className="inline-flex items-center bg-slate-900 hover:bg-slate-800 text-cyan-400 font-semibold px-2.5 py-0.5 rounded-md shadow-xs transition-colors border border-slate-700 text-xs"
+              title="Manage products, orders, categories, and store content"
+            >
+              <ShieldCheck className="w-3 h-3 mr-1 text-cyan-400" />
+              <span>Admin Portal</span>
+            </button>
 
             {!user ? (
               <button 
@@ -605,20 +604,18 @@ export const Header: React.FC = () => {
                 </button>
               </div>
 
-              {isAdminOrManager && (
-                <div className="py-3">
-                  <button
-                    onClick={() => {
-                      setActivePage('admin');
-                      setIsMobileMenuOpen(false);
-                    }}
-                    className="w-full py-2.5 bg-cyan-600 text-white rounded-xl font-semibold flex items-center justify-center space-x-2 shadow-xs"
-                  >
-                    <LayoutDashboard className="w-4 h-4" />
-                    <span>Open Admin Dashboard</span>
-                  </button>
-                </div>
-              )}
+              <div className="py-3">
+                <button
+                  onClick={() => {
+                    setActivePage('admin');
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-cyan-400 border border-slate-700 rounded-xl font-semibold flex items-center justify-center space-x-2 shadow-xs transition-colors"
+                >
+                  <ShieldCheck className="w-4 h-4 text-cyan-400" />
+                  <span>Open Admin Portal</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
